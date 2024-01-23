@@ -1,0 +1,120 @@
+name: Deployment Cirkel Microservices
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  pull_request: 
+    branches:
+      - 'master'
+
+env:
+  CR_URL: ghcr.io/cirkel-mc
+
+jobs:
+  setup-job-env:
+    runs-on: ubuntu-22.04
+    outputs:
+      kube_context: ${{ steps.set-variable.outputs.kube_context }}
+      image_tag: ${{ steps.set-variable.outputs.image_tag }}
+      file_values: ${{ steps.set-variable.outputs.file_values }}
+      namespace: ${{ steps.set-variable.outputs.namespace }}
+      service_name: ${{ steps.set-variable.outputs.service_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Set env variable
+        id: set-variable
+        shell: bash
+        run: |
+          branch=${{ github.head_ref }}
+          echo $branch
+          if [ -z "$branch" ]; then
+            branch=${{ github.ref }}
+            echo $branch
+          fi
+          echo $branch
+
+          if [[ $branch =~ ^refs\/heads\/release\/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            version_tag=$(echo $branch | cut -d '/' -f4)
+            echo "image_tag=$(echo $version_tag | sed 's@v@@')" >> $GITHUB_OUTPUT
+            echo "file_values=values-prd.yaml" >> $GITHUB_OUTPUT
+            echo "kube_context=cirkel-prod" >> $GITHUB_OUTPUT
+            echo "namespace=cirkel" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ $branch =~ ^release\/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            version_tag=$(echo $branch | cut -d '/' -f4)
+            echo "image_tag=$(echo $version_tag | sed 's@v@@')" >> $GITHUB_OUTPUT
+            echo "file_values=values-prd.yaml" >> $GITHUB_OUTPUT
+            echo "kube_context=cirkel-prod" >> $GITHUB_OUTPUT
+            echo "namespace=cirkel" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ $branch =~ ^feature\/[a-zA-Z0-9_-]{0,50} ]]; then
+            echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "file_values=values-dev.yaml" >> $GITHUB_OUTPUT
+            echo "kube_context=pg" >> $GITHUB_OUTPUT
+            echo "namespace=cirkel-dev" >> $GITHUB_OUTPUT
+          fi
+
+          echo "service_name=$(echo ${{ github.repository }} | cut -d '/' -f2)" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-22.04
+    permissions:
+      packages: write
+    env:
+      IMAGE_TAG: ${{ needs.setup-job-env.outputs.image_tag }}
+    needs:
+      - setup-job-env
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: Login to Github Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.CR_URL }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker build and push into repository
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            user=${{ secrets.GH_USER }}
+            token=${{ secrets.GH_PERSONAL_TOKEN }}
+          push: true
+          tags: |
+            ${{ env.CR_URL }}/${{ needs.setup-job-env.outputs.service_name }}:${{ env.IMAGE_TAG }}
+  
+  deploy:
+      name: Deploy application
+      runs-on: ubuntu-22.04
+      env:
+        IMAGE_TAG: ${{ needs.setup-job-env.outputs.image_tag }}
+        NAMESPACE: ${{ needs.setup-job-env.outputs.namespace }}
+        FILE_VAULES: ${{ needs.setup-job-env.outputs.file_values }}
+      needs:
+        - setup-job-env
+        - build
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            ref: ${{ github.ref }}
+        - name: Deploy with Helm Chart
+          uses: wahyd4/kubectl-helm-action@master
+          env:
+            KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+          with:
+            args: |
+              kubectl config use-context ${{ needs.setup-job-env.outputs.kube_context }}
+              helm repo add cirkel ${{ secrets.PAGES_URL }}/charts
+              helm upgrade --install ${{ needs.setup-job-env.outputs.service_name }} cirkel/cirkel-chart -f ${{ env.FILE_VAULES }} -n ${{ env.NAMESPACE }} \
+                --set image.repository=${{ env.CR_URL }}/${{ needs.setup-job-env.outputs.service_name }} \
+                --set image.tag=${{ env.IMAGE_TAG }}
