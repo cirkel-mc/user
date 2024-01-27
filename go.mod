@@ -5,6 +5,7 @@ go 1.21.1
 require (
 	github.com/cirkel-mc/goutils v0.0.0-20240122004958-fc1e7afde0eb
 	github.com/gofiber/fiber/v2 v2.51.0
+	github.com/joho/godotenv v1.5.1
 )
 
 require (

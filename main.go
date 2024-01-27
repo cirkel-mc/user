@@ -4,6 +4,7 @@ import (
 	"cirkel/user/cmd"
 
 	"github.com/cirkel-mc/goutils/config"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 const serviceName = "user"

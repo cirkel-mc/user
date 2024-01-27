@@ -24,5 +24,20 @@ func New(deps abstract.Dependency, uc usecase.Usecase) abstract.RESTHandler {
 
 func (h *httpInstance) Router(r fiber.Router) {
 	v1 := r.Group("/v1")
-	v1.Use(h.middleware.HTTPSignatureValidate)
+	// v1.Use(h.middleware.HTTPSignatureValidate)
+
+	{
+		genrePath := v1.Group("/genre")
+		genrePath.Get("", h.getGenre)
+	}
+
+	{
+		skillPath := v1.Group("/skill")
+		skillPath.Get("", h.getSkill)
+	}
+
+	{
+		instrumentPath := v1.Group("/instrument")
+		instrumentPath.Get("", h.getInstruments)
+	}
 }
