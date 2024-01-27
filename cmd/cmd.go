@@ -23,7 +23,7 @@ func Serve(cfg config.Config) *server.Server {
 	cacheRepo := cache.New(deps.GetRedisDatabase().Client())
 
 	// usecase
-	uc := usecase.New(psqlRepo, cacheRepo)
+	uc := usecase.New(cacheRepo, psqlRepo)
 
 	// initiates services
 	svc := server.NewApplicationService(

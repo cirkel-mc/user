@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cirkel-mc/goutils/abstract"
 	"github.com/cirkel-mc/goutils/config"
@@ -11,7 +10,6 @@ import (
 func injectDependencies(cfg config.Config) (deps abstract.Dependency) {
 	cfg.Injections(func(ctx context.Context) []abstract.Closer {
 		master, slave := sqlDatabase()
-		fmt.Println("sebelum redis")
 		redis := redisDatabase(cfg.GetServiceName())
 
 		deps = abstract.New(
